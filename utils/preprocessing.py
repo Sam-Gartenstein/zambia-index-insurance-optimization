@@ -6,6 +6,29 @@ import ee
 import geemap
 
 
+def summarize_admin_level(admin_level: str, name_field: str):
+    """
+    Load GAUL data for a given admin level, print unit names,
+    and print the number of unique units.
+
+    Parameters
+    ----------
+    admin_level : str
+        'level1' or 'level2'
+    name_field : str
+        Column name for the admin level ('ADM1_NAME' or 'ADM2_NAME')
+    """
+    gdf, names = load_fao_gaul_data(admin_level=admin_level)
+
+    print(f"Administrative {admin_level.title()} Units ({name_field}):")
+    print(names, "\n")
+
+    num_unique = gdf[name_field].nunique()
+    print(f"Number of unique {name_field} units: {num_unique}\n")
+
+    return gdf, names
+
+
 def load_fao_gaul_data(admin_level="level2", country_name="Zambia"):
     """
     Load GAUL data from GEE for a given country and admin level, return as GeoDataFrame.
@@ -110,6 +133,40 @@ def clean_and_geocode_pivot(df_pivot):
     return gdf_pixels
 
 
+def spatial_join_by_intersects(precip_gdf, admin_gdf, admin_col='ADM1_NAME', epsg=4326):
+    """
+    Ensure both GeoDataFrames are in the same CRS and perform a spatial join 
+    based on the 'intersects' predicate. Drops the 'index_right' column after joining.
+
+    Parameters:
+    - precip_gdf (GeoDataFrame): GeoDataFrame with point or polygon data (e.g., precipitation data).
+    - admin_gdf (GeoDataFrame): GeoDataFrame with administrative boundaries.
+    - admin_col (str): The column name in admin_gdf to keep in the join.
+    - epsg (int): The EPSG code for the target CRS (default is 4326).
+
+    Returns:
+    - GeoDataFrame: Result of the spatial join with the admin column attached, excluding 'index_right'.
+    """
+    precip_gdf = precip_gdf.to_crs(epsg=epsg)
+    admin_gdf = admin_gdf.to_crs(epsg=epsg)
+
+    # Filter invalid geometries (optional but recommended)
+    precip_gdf = precip_gdf[precip_gdf.is_valid]
+    admin_gdf = admin_gdf[admin_gdf.is_valid]
+
+    joined = gpd.sjoin(
+        precip_gdf,
+        admin_gdf[[admin_col, 'geometry']],
+        how='left',
+        predicate='intersects'
+    )
+
+    if 'index_right' in joined.columns:
+        joined = joined.drop(columns='index_right')
+
+    return joined
+
+
 def long_format_precipitation(df, cluster_columns=None):
     """
     Converts a wide-format precipitation DataFrame into long format,
@@ -155,3 +212,18 @@ def long_format_precipitation(df, cluster_columns=None):
     df_long['agricultural_season'] = df_long['agricultural_season'].astype(int)
 
     return df_long
+
+
+def compute_mean_precip(df, group_cols, value_col="precipitation"):
+    """
+    Groups the DataFrame by specified columns and computes the mean of the value column.
+
+    Parameters:
+    - df (DataFrame): Input DataFrame.
+    - group_cols (list): List of columns to group by.
+    - value_col (str): Name of the column to average.
+
+    Returns:
+    - DataFrame with group means.
+    """
+    return df.groupby(group_cols)[value_col].mean().reset_index()

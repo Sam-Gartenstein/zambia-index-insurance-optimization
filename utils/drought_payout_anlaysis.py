@@ -2,7 +2,9 @@
 import pandas as pd
 import plotly.express as px
 import numpy as np
-
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.colors import ListedColormap
 
 '''
 Add in mean function
@@ -34,7 +36,29 @@ def assign_drought_indicator(dataframe, group_column="non_opt_cluster", season_c
     return dataframe
 
 
-def plot_drought_heatmap(dataframe, cluster_column="non_opt_cluster", season_column="agricultural_season", drought_column="drought_indicator", precip_column="precipitation"):
+def count_unique_drought_years(df, admin_col="ADM1_NAME"):
+    """
+    Counts the number of drought years per administrative region and returns
+    the number of unique drought year counts.
+
+    Parameters:
+    - df (DataFrame): Input DataFrame that includes 'drought_indicator'.
+    - admin_col (str): Column name for the administrative unit to group by.
+
+    Returns:
+    - ndarray: Unique drought year counts across the regions.
+    """
+    drought_counts = (
+        df[df["drought_indicator"] == 1]
+        .groupby(admin_col)["drought_indicator"]
+        .count()
+        .reset_index(name="drought_years")
+    )
+
+    return print(drought_counts["drought_years"].unique())
+
+
+def plot_drought_heatmap_interactive(dataframe, cluster_column="non_opt_cluster", season_column="agricultural_season", drought_column="drought_indicator", precip_column="precipitation"):
     """
     Creates an interactive heatmap of drought indicators for each cluster across agricultural seasons.
 
@@ -110,6 +134,50 @@ def plot_drought_heatmap(dataframe, cluster_column="non_opt_cluster", season_col
     fig.show()
     
 
+def plot_drought_heatmap_static(
+    dataframe,
+    cluster_column="non_opt_cluster",
+    season_column="agricultural_season",
+    drought_column="drought_indicator",
+    cmap="RdYlGn_r"
+):
+    """
+    Creates a static heatmap of drought indicators for each cluster across agricultural seasons.
+
+    Parameters:
+    - dataframe (pd.DataFrame): The DataFrame containing drought data.
+    - cluster_column (str, optional): The column representing clusters (default: "non_opt_cluster").
+    - season_column (str, optional): The column representing agricultural seasons (default: "agricultural_season").
+    - drought_column (str, optional): The column representing drought indicators (default: "drought_indicator").
+    - cmap (str, optional): Colormap for the heatmap (default: "RdYlGn_r", where green = non-drought, red = drought).
+
+    Returns:
+    - None: Displays a static heatmap.
+    """
+
+    # Pivot the data for heatmap structure
+    heatmap_data = dataframe.pivot(index=cluster_column, columns=season_column, values=drought_column)
+
+    # Create the heatmap
+    plt.figure(figsize=(12, 6))
+    sns.heatmap(
+        heatmap_data,
+        cmap=["green", "red"],   # Explicit colors for 0 and 1
+        cbar_kws={"ticks": [0, 1], "label": "Drought Indicator"},
+        linewidths=0.5,
+        linecolor="white",
+        annot=False
+    )
+
+    # Formatting
+    plt.title("Drought Indicator Heatmap by Cluster")
+    plt.xlabel("Agricultural Season (Years)")
+    plt.ylabel("Cluster")
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    plt.show()
+    
+    
 def summarize_drought_by_cluster(dataframe, cluster_column="non_opt_cluster", season_column="agricultural_season", pixel_column="Pixel_ID", drought_column="drought_indicator"):
     """
     Groups the data by cluster and agricultural season to compute the total pixels, drought pixels, 
@@ -141,7 +209,7 @@ def summarize_drought_by_cluster(dataframe, cluster_column="non_opt_cluster", se
     return drought_summary
 
 
-def plot_drought_percentage_heatmap(drought_summary, cluster_column="non_opt_cluster", season_column="agricultural_season", drought_percentage_column="drought_percentage"):
+def plot_drought_percentage_heatmap_interactive(drought_summary, cluster_column="non_opt_cluster", season_column="agricultural_season", drought_percentage_column="drought_percentage"):
     """
     Creates an interactive heatmap showing drought percentage by cluster and agricultural season.
 
@@ -187,6 +255,95 @@ def plot_drought_percentage_heatmap(drought_summary, cluster_column="non_opt_clu
     fig.show()
 
 
+def plot_drought_percentage_heatmap_static(
+    drought_summary: pd.DataFrame,
+    cluster_column: str = "non_opt_cluster",
+    season_column: str = "agricultural_season",
+    drought_percentage_column: str = "drought_percentage",
+    *,
+    title: str = "Drought Percentage by Cluster and Agricultural Season",
+    annotate: bool = False,
+    vmin: float = 0.0,
+    vmax: float = 100.0,
+):
+    """
+    Draw a static heatmap of drought percentage by cluster (rows) and season (columns).
+
+    Parameters
+    ----------
+    drought_summary : pd.DataFrame
+        DataFrame with at least [cluster_column, season_column, drought_percentage_column].
+    cluster_column : str
+        Column name for clusters (rows).
+    season_column : str
+        Column name for seasons/years (columns).
+    drought_percentage_column : str
+        Column name for drought percentage values (0–100).
+    title : str
+        Plot title.
+    annotate : bool
+        If True, write the percentage in each cell.
+    vmin, vmax : float
+        Color scale bounds (defaults to 0–100).
+
+    Returns
+    -------
+    None (shows the figure)
+    """
+    # Pivot to wide matrix: rows=clusters, cols=seasons
+    heatmap_df = drought_summary.pivot(
+        index=cluster_column, columns=season_column, values=drought_percentage_column
+    )
+
+    # Sort the axes for consistent ordering
+    heatmap_df = heatmap_df.sort_index().reindex(sorted(heatmap_df.columns), axis=1)
+
+    # Convert to array
+    Z = heatmap_df.to_numpy(dtype=float)
+
+    # Colormap: reverse Red-Yellow-Green (higher % = red), gray for NaNs
+    cmap = plt.get_cmap("RdYlGn_r").copy()
+    cmap.set_bad(color="#e0e0e0")  # light gray for missing cells
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    im = ax.imshow(Z, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+
+    # Axis ticks/labels
+    ax.set_title(title)
+    ax.set_xlabel("Agricultural Season")
+    ax.set_ylabel("Cluster")
+
+    seasons = list(heatmap_df.columns)
+    clusters = list(heatmap_df.index)
+
+    ax.set_xticks(np.arange(len(seasons)))
+    ax.set_xticklabels([str(x) for x in seasons], rotation=45, ha="right")
+    ax.set_yticks(np.arange(len(clusters)))
+    ax.set_yticklabels([str(x) for x in clusters])
+
+    # Colorbar
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Drought Percentage (%)")
+
+    # Optional annotations
+    if annotate:
+        nrows, ncols = Z.shape
+        for r in range(nrows):
+            for c in range(ncols):
+                val = Z[r, c]
+                if np.isfinite(val):
+                    ax.text(c, r, f"{val:.0f}%", ha="center", va="center", fontsize=8)
+
+    # Light gridlines between cells (via minor ticks)
+    ax.set_xticks(np.arange(-0.5, Z.shape[1], 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, Z.shape[0], 1), minor=True)
+    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.8)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    plt.tight_layout()
+    plt.show()
+    
+    
 def compute_payout_balance_index(df, drought_percentage_column="drought_percentage"):
     """
     Adds 'deviation_from_50' and 'payout_balance_index' columns to the DataFrame.
