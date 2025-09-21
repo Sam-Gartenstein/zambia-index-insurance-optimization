@@ -10,6 +10,23 @@ from matplotlib.colors import ListedColormap
 Add in mean function
 '''
 
+def compute_cluster_mean_precipitation(dataframe, cluster_column="non_opt_cluster", date_column="agricultural_season", value_column="precipitation"):
+    """
+    Groups the given DataFrame by cluster and date, computing the mean precipitation for each cluster per month.
+
+    Parameters:
+    - dataframe (pd.DataFrame): The DataFrame containing precipitation data.
+    - cluster_column (str, optional): The column representing cluster labels (default: "non_opt_cluster").
+    - date_column (str, optional): The column representing the time period (default: "year_month").
+    - value_column (str, optional): The column containing precipitation values (default: "precipitation").
+
+    Returns:
+    - pd.DataFrame: A DataFrame with mean precipitation per cluster per month.
+    """
+    grouped_df = dataframe.groupby([cluster_column, date_column], as_index=False)[value_column].mean()
+    return grouped_df
+
+
 def assign_drought_indicator(dataframe, group_column="non_opt_cluster", season_column="agricultural_season", precip_column="precipitation", drought_column="drought_indicator", quantile_threshold=0.2):
     """
     Assigns a drought indicator to each observation based on a column-specific precipitation threshold.
@@ -386,3 +403,5 @@ def filter_low_drought(df):
     pd.DataFrame: Filtered DataFrame.
     """
     return df[df["drought_percentage"] >= 50]
+
+
