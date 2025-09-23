@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.colors import ListedColormap
+from matplotlib.ticker import FuncFormatter
+
 
 '''
 Add in mean function
@@ -403,5 +405,218 @@ def filter_low_drought(df):
     pd.DataFrame: Filtered DataFrame.
     """
     return df[df["drought_percentage"] >= 50]
+
+
+def plot_forgone_by_zones(
+    zones_to_fp: dict,
+    title: str = "Forgone Payments by Number of Zones",
+    annotate_in_millions: bool = True,
+    x_label_template: str = "{zones} zones",
+    *,
+    figsize=(8, 5),
+    line_kwargs=None,                 # e.g., {"marker":"o","linestyle":"-"}
+    annotate: bool = True,
+    annotate_fmt=None,                # callable: float -> str; overrides annotate_in_millions if provided
+    annotate_offsets=None,            # None | (dx,dy) | list[(dx,dy)] | callable(index,value)->(dx,dy)
+    annotate_ha: str = "center",
+    annotate_va: str = "bottom",
+    show: bool = True,
+):
+    """
+    Plot forgone payments vs. number of zones, with configurable annotation positions.
+
+    Parameters
+    ----------
+    zones_to_fp : dict[int, float]
+        Mapping {num_zones: forgone_payments}.
+    title : str
+        Plot title.
+    annotate_in_millions : bool
+        If True, annotate each point as '<value>M' with 2 decimals.
+        Otherwise annotate as raw value with thousands separators.
+        Ignored if `annotate_fmt` is provided.
+    x_label_template : str
+        Template for x tick labels. Use '{zones}' placeholder (e.g., '{zones} zones').
+    figsize : tuple
+        Figure size.
+    line_kwargs : dict
+        Passed to plt.plot (e.g., marker, linestyle).
+    annotate : bool
+        Toggle annotations on/off.
+    annotate_fmt : callable or None
+        Custom formatter for annotation text. Signature: f(value)->str.
+    annotate_offsets : None | (dx,dy) | list[(dx,dy)] | callable
+        Offset(s) in points for annotation placement.
+        - None: use (0, 8) for all points
+        - (dx,dy): apply to all points
+        - list of (dx,dy): per-point offsets, must match number of points
+        - callable: given (i, y) returns (dx, dy) for point i with value y
+    annotate_ha, annotate_va : str
+        Horizontal/vertical alignment for annotation text.
+    show : bool
+        If True, calls plt.show(). Returns (fig, ax) regardless.
+
+    Returns
+    -------
+    (fig, ax)
+    """
+    # Sort by zone count for consistent x-ordering
+    pairs = sorted(zones_to_fp.items(), key=lambda kv: kv[0])
+    zones  = [z for z, _ in pairs]
+    values = [v for _, v in pairs]
+    x_labels = [x_label_template.format(zones=z) for z in zones]
+
+    # Defaults
+    _line_kwargs = dict(marker="o", linestyle="-")
+    if line_kwargs:
+        _line_kwargs.update(line_kwargs)
+
+    # Default annotation formatter (no currency)
+    if annotate_fmt is None:
+        if annotate_in_millions:
+            annotate_fmt = lambda v: f"{v/1e6:.2f}M"
+        else:
+            annotate_fmt = lambda v: f"{v:,.0f}"
+
+    # Build figure
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot(x_labels, values, **_line_kwargs)
+
+    ax.set_xlabel("Number of zones")
+    ax.set_ylabel("Forgone Payments")
+    ax.set_title(title)
+    ax.grid(True, linestyle="--", alpha=0.7, axis="y")
+
+    # Resolve annotation offsets
+    def resolve_offset(i, y):
+        if annotate_offsets is None:
+            return (0, 8)
+        if isinstance(annotate_offsets, tuple):
+            return annotate_offsets
+        if callable(annotate_offsets):
+            return annotate_offsets(i, y)
+        # assume list-like
+        return annotate_offsets[i]
+
+    # Annotate points
+    if annotate:
+        n = len(values)
+        if isinstance(annotate_offsets, list) and len(annotate_offsets) != n:
+            raise ValueError("Length of annotate_offsets list must match number of points.")
+        for i, (xl, y) in enumerate(zip(x_labels, values)):
+            if y is None:
+                continue
+            dx, dy = resolve_offset(i, y)
+            ax.annotate(
+                annotate_fmt(y),
+                xy=(xl, y),
+                xytext=(dx, dy),
+                textcoords="offset points",
+                ha=annotate_ha,
+                va=annotate_va,
+                fontsize=10,
+            )
+
+    plt.tight_layout()
+    if show:
+        plt.show()
+    return fig, ax
+
+DEFAULT_LABELS = ["Admin 1 → Clusters", "Clusters → Admin 2", "Admin 2 → Camps"]
+
+def benefit_changes(
+    values,
+    *,
+    labels=DEFAULT_LABELS,
+    title="Marginal Benefit per Zone Change",
+    ylabel="Absolute change per added zone (ZMW per zone)",
+    figsize=(8, 5),
+    yformatter=lambda v: f"{v:,.0f}",
+    line_kwargs=None,
+    annotate=True,
+    annotate_fmt=lambda v: f"{v:,.2f}",
+    annotate_offsets=None,   # None, (dx,dy), or list of (dx,dy) per point (in points)
+    annotate_ha="center",
+    annotate_va="bottom",
+):
+    """
+    Plot marginal change per added zone with configurable title and annotation positions.
+
+    Parameters
+    ----------
+    values : array-like of float
+        Y values (e.g., marginal change, ZMW/zone).
+    labels : list[str], optional
+        X tick labels. Defaults to Admin→Clusters→Admin2→Camps.
+    title : str, optional
+        Plot title.
+    ylabel : str, optional
+        Y-axis label.
+    figsize : tuple, optional
+        Figure size.
+    yformatter : callable, optional
+        Formats Y tick labels. Default: thousands separators, no decimals.
+    line_kwargs : dict, optional
+        Extra kwargs for ax.plot (e.g., {"marker":"o","linestyle":"-"}).
+    annotate : bool, optional
+        If True, annotate each point with its value.
+    annotate_fmt : callable, optional
+        Formats annotation text from numeric value.
+    annotate_offsets : None | (dx,dy) | list[(dx,dy)], optional
+        Offset(s) for annotations in points. If None → (0,8) for all.
+        If tuple → applied to all points. If list → per-point offsets.
+    annotate_ha : {"left","center","right"}, optional
+        Horizontal alignment for annotations.
+    annotate_va : {"top","bottom","center","baseline","center_baseline"}, optional
+        Vertical alignment for annotations.
+
+    Returns
+    -------
+    (fig, ax) : matplotlib Figure and Axes
+    """
+    values = np.asarray(values, dtype=float)
+    x = np.arange(len(labels))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot line
+    _line_kwargs = dict(marker="o", linestyle="-")
+    if line_kwargs:
+        _line_kwargs.update(line_kwargs)
+    ax.plot(x, values, **_line_kwargs)
+
+    # Axes formatting
+    ax.set_xticks(x, labels)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.grid(True, axis="y", linestyle="--", alpha=0.7)
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: yformatter(v)))
+
+    # Annotation offsets
+    if annotate_offsets is None:
+        offsets = [(0, 8)] * len(values)
+    elif isinstance(annotate_offsets, tuple):
+        offsets = [annotate_offsets] * len(values)
+    else:
+        # assume list of per-point offsets
+        offsets = annotate_offsets
+        if len(offsets) != len(values):
+            raise ValueError("Length of annotate_offsets must match number of values.")
+
+    # Annotate points
+    if annotate:
+        for (xi, yi), (dx, dy) in zip(zip(x, values), offsets):
+            if np.isfinite(yi):
+                ax.annotate(
+                    annotate_fmt(yi),
+                    xy=(xi, yi),
+                    xytext=(dx, dy),
+                    textcoords="offset points",
+                    ha=annotate_ha,
+                    va=annotate_va,
+                )
+
+    plt.tight_layout()
+    return fig, ax
 
 
