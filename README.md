@@ -40,11 +40,11 @@ The metric $m_{i \to j}$ represents the change in forgone payments **per additio
 
 ### Total Benefit per Zone Change 
 
-The table below shows the benefit from increasing zones. That is, it shows the benefit going from
+The table below reports the total benefit associated with increasing the number of zones at each stage of aggregation. Specifically, it shows the gains from:  
 
-- Going from 10 provinces to 29 clusters
-- 29 clusters to 115 districts
-- 115 districts to 2474 camps
+- Expanding from 10 provinces to 29 clusters  
+- Expanding from 29 clusters to 115 districts  
+- Expanding from 115 districts to 2,474 camps  
 
 | **Zoning Method**       | Total Benefit (in millions of Zambian Kwacha) |
 |--------------------------|-----------------------------------------------|
@@ -52,4 +52,15 @@ The table below shows the benefit from increasing zones. That is, it shows the b
 | Clusters → Districts     |  1.93                                         |
 | Districts → Camps        |  2.32                                         |
 
+### Marginal Benefit per Zone Change
 
+The table below shows the marginal benefit of increasing the number of zones, calculated by dividing the change in total benefit by the difference in the number of zones between levels.  
+
+| **Zoning Transition**   | Marginal Benefit (Zambian Kwacha per zone) |
+|--------------------------|--------------------------------------------|
+| Provinces → Clusters     | 86,205.06                                  |
+| Clusters → Districts     | 22,420.11                                  |
+| Districts → Camps        |    983.99                                  |
+
+
+**TODO**: Add analysis and instructions
